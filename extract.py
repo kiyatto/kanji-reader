@@ -4,8 +4,7 @@ import os
 import numpy as np
 from PIL import Image
 
-# folder with all folders containing character files
-# each subfolder pertains to a different character's data
+# points to the folder containing folders of images
 data_path = '../etlcdb-image-extractor/etl_data/images/ETL9G'
 
 class_list = sorted([f for f in os.listdir(data_path) 
