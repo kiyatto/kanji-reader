@@ -1,0 +1,32 @@
+# converts ETL9G images (after processing) and labels into Numpy arrays
+
+import os
+import numpy as np
+from PIL import Image
+
+# folder with all folders containing character files
+# each subfolder pertains to a different character's data
+data_path = '../etlcdb-image-extractor/etl_data/images/ETL9G'
+
+class_list = sorted([f for f in os.listdir(data_path) 
+                      if os.path.isdir(os.path.join(data_path, f))])
+class_dict = { name: i for i, name in enumerate(class_list) }
+
+images = []
+labels = []
+
+for folder_name in class_list:
+    folder_path = os.path.join(data_path, folder_name)
+    idx = class_dict[folder_name]
+    for file in os.listdir(folder_path):
+        if not file.endswith('.png'):
+            continue
+        img = Image.open(os.path.join(folder_path, file)).convert('L') # grayscale
+        images.append(np.asarray(img))
+        labels.append(idx)
+
+X = np.stack(images);
+Y = np.array(labels);
+
+np.savez_compressed('kanji_data.npz', images=X, labels=Y)
+
