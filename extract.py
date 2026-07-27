@@ -27,5 +27,5 @@ for folder_name in class_list:
 X = np.stack(images);
 Y = np.array(labels);
 
-np.savez_compressed('kanji_data.npz', images=X, labels=Y)
+np.savez_compressed('kanji_data.npz', images=X, labels=Y, class_list = class_list)
 
