@@ -1,2 +1,5 @@
 .DS_Store
-kanji_data.npz
+kanji_images.npy
+kanji_labels.npy
+class_list.npy
+
