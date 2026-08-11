@@ -81,19 +81,33 @@ def preprocess_frame(canvas_uint8):
     if len(xs) == 0:
         return None
  
-    pad = 20
-    x0, x1 = max(xs.min() - pad, 0), min(xs.max() + pad, canvas_uint8.shape[1])
-    y0, y1 = max(ys.min() - pad, 0), min(ys.max() + pad, canvas_uint8.shape[0])
+    # 1. boundaries of the drawn strokes
+    min_x, max_x = xs.min(), xs.max()
+    min_y, max_y = ys.min(), ys.max()
+    
+    char_w = max_x - min_x
+    char_h = max_y - min_y
+    
+    # 2. calculate & apply dynamic padding (25%)
+    pad = int(max(char_w, char_h) * 0.25)
+    x0 = max(min_x - pad, 0)
+    x1 = min(max_x + pad, canvas_uint8.shape[1])
+    y0 = max(min_y - pad, 0)
+    y1 = min(max_y + pad, canvas_uint8.shape[0])
+    
     cropped = canvas_uint8[y0:y1, x0:x1]
  
+    # 3. square & resize
     h, w = cropped.shape
     size = max(h, w)
     square = np.full((size, size), 255, dtype=np.uint8)
+    
     y_off, x_off = (size - h) // 2, (size - w) // 2
     square[y_off:y_off + h, x_off:x_off + w] = cropped
  
     resized = cv2.resize(square, (64, 64), interpolation=cv2.INTER_AREA)
     normalized = resized.astype(np.float32) / 255.0
+    
     return normalized
 
 
@@ -154,7 +168,7 @@ while True:
 
         if pen_down:
             if last_pt is not None:
-                cv2.line(canvas, last_pt, (px, py), 0, thickness=3, lineType=cv2.LINE_AA)
+                cv2.line(canvas, last_pt, (px, py), (128, 128, 128), thickness=10, lineType=cv2.LINE_AA)
             last_pt = (px, py)
             last_pen_down_time = time.time()
             has_stroke = True
@@ -167,7 +181,7 @@ while True:
     if has_stroke and time.time() - last_pen_down_time > STROKE_TIMEOUT:
         img = preprocess_frame(canvas)
         if img is not None:
-            cv2.imwrite("debug_model_input.png", (img * 255).astype(np.uint8))
+            # cv2.imwrite("debug_model_input.png", (img * 255).astype(np.uint8))
             prediction = run_model(img)
             code_str = str(prediction).replace("0x", "")
             decoded_prediction = chr(int(code_str, 16))

@@ -2,5 +2,4 @@
 /data
 /models
 __pycache__/
-debug_model_input.png
-tester.png
+/test_data
