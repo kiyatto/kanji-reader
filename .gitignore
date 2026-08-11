@@ -1,7 +1,3 @@
 .DS_Store
-kanji_images.npy
-kanji_images_64.npy
-kanji_labels.npy
-class_list.npy
-kanji_model.pth
+/data
 
