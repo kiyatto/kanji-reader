@@ -32,9 +32,9 @@ options = HandLandmarkerOptions(
 landmarker = HandLandmarker.create_from_options(options)
 
 print("Created landmarker")
-# create canvas
+# create white canvas
 CANVAS_SIZE = 512
-canvas = np.zeros((CANVAS_SIZE, CANVAS_SIZE), dtype=np.uint8)
+canvas = np.full((CANVAS_SIZE, CANVAS_SIZE), 255, dtype=np.uint8)
 
 THUMB_TIP = 4
 INDEX_TIP = 8
@@ -43,6 +43,7 @@ STROKE_TIMEOUT = 1.3
 
 last_pt = None
 last_pen_down_time = time.time()
+has_stroke = False
 print("Created canvas")
 
 # capture from webcam
@@ -51,6 +52,8 @@ print("Checkpoint 1!")
 if not cap.isOpened():
     print("Cannot open camera")
     exit()
+
+
 
 def draw_char_on_canvas(canvas_uint8, char, font_path, size=20, bottom_margin=40):
     pil_img = Image.fromarray(canvas_uint8).convert("L")
@@ -66,12 +69,15 @@ def draw_char_on_canvas(canvas_uint8, char, font_path, size=20, bottom_margin=40
     x = (canvas_w - text_w) // 2 - bbox[0]
     y = canvas_h - bottom_margin - text_h - bbox[1]
 
-    draw.text((x, y), char, fill=255, font=font)
+    # black lines
+    draw.text((x, y), char, fill=0, font=font)
     return np.array(pil_img)
+
+
 
 # crops to 64x64 and normalizes input image
 def preprocess_frame(canvas_uint8):
-    ys, xs = np.where(canvas_uint8 > 0)
+    ys, xs = np.where(canvas_uint8 < 255)
     if len(xs) == 0:
         return None
  
@@ -82,15 +88,14 @@ def preprocess_frame(canvas_uint8):
  
     h, w = cropped.shape
     size = max(h, w)
-    square = np.zeros((size, size), dtype=np.uint8)
+    square = np.full((size, size), 255, dtype=np.uint8)
     y_off, x_off = (size - h) // 2, (size - w) // 2
     square[y_off:y_off + h, x_off:x_off + w] = cropped
  
     resized = cv2.resize(square, (64, 64), interpolation=cv2.INTER_AREA)
-    inverted = 255 - resized
-
-    normalized = inverted.astype(np.float32) / 255.0
+    normalized = resized.astype(np.float32) / 255.0
     return normalized
+
 
 
 def run_model(img):
@@ -101,6 +106,24 @@ def run_model(img):
     return class_list[pred_idx]
 
 # loop
+
+# debug stuff
+
+# test_img = cv2.imread("./tester.png")
+
+# sim_stroke = 255 - test_img
+
+# # paste it into a canvas-sized array, centered, same as a real drawn character would sit
+# sim_canvas = np.zeros((CANVAS_SIZE, CANVAS_SIZE), dtype=np.uint8)
+# h, w = sim_stroke.shape
+# y0, x0 = (CANVAS_SIZE - h) // 2, (CANVAS_SIZE - w) // 2
+# sim_canvas[y0:y0 + h, x0:x0 + w] = sim_stroke
+
+# # now push it through your REAL pipeline, exactly as the live loop does
+# processed = preprocess_frame(sim_canvas)
+# cv2.imwrite("debug_roundtrip.png", (processed * 255).astype(np.uint8))
+# prediction = run_model(processed)
+# print(f"Round-trip prediction: {prediction}  (expected: {target_char})")
 
 while True:
     # read latest frame from camera
@@ -131,16 +154,17 @@ while True:
 
         if pen_down:
             if last_pt is not None:
-                cv2.line(canvas, last_pt, (px, py), 255, thickness=6)
+                cv2.line(canvas, last_pt, (px, py), 0, thickness=3, lineType=cv2.LINE_AA)
             last_pt = (px, py)
             last_pen_down_time = time.time()
+            has_stroke = True
         else:
             last_pt = None
     else:
         last_pt = None
 
     # send character for inference if past stroke timeout
-    if time.time() - last_pen_down_time > STROKE_TIMEOUT and canvas.any():
+    if has_stroke and time.time() - last_pen_down_time > STROKE_TIMEOUT:
         img = preprocess_frame(canvas)
         if img is not None:
             cv2.imwrite("debug_model_input.png", (img * 255).astype(np.uint8))
@@ -149,13 +173,12 @@ while True:
             decoded_prediction = chr(int(code_str, 16))
             text = f"Predicted character: {decoded_prediction}"
             canvas = draw_char_on_canvas(canvas, text, font_path)
-            print(f"Predicted character: {decoded_prediction}.")
+            print(f"Predicted character: {decoded_prediction}.") # console
             cv2.imshow("canvas", canvas)
-            cv2.waitKey(15)              # hold it on screen for 4 seconds
-        canvas[:] = 0
-
-    sample = np.load("./data/class_list.npy", allow_pickle=True)[203] # random sample for testing
-    cv2.imwrite("debug_training_sample.png", sample)
+            cv2.waitKey(5000)
+        canvas[:] = 255
+        has_stroke = False
+        last_pt = None
 
     cv2.imshow("canvas", canvas)
     cv2.imshow("webcam", frame)
