@@ -1,5 +1,7 @@
 .DS_Store
-/data
-/models
+/data/kanji*.npy
+/models/hand_landmarker.task
 __pycache__/
 /test_data
+.kanji/
+/kanji

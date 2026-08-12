@@ -7,7 +7,7 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 
 # load japanese font
-font_path = '/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc'
+font_path = "./assets/NotoSansJP-Regular.ttf"
 font = ImageFont.truetype(font_path, size=64, index=0)
 
 # load model structure + weights
