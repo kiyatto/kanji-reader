@@ -6,6 +6,14 @@ import mediapipe as mp
 import torch
 from PIL import Image, ImageDraw, ImageFont
 
+
+
+latest_result = None
+
+def result_callback(result, output_image, timestamp_ms):
+    global latest_result
+    latest_result = result
+
 # load japanese font
 font_path = "./assets/NotoSansJP-Regular.ttf"
 font = ImageFont.truetype(font_path, size=64, index=0)
@@ -15,7 +23,7 @@ class_list = np.load("./data/class_list.npy", allow_pickle=True)
 cnn_model = load_model("./models/kanji_model.pth", device="cpu")
 hand_model_path = './models/hand_landmarker.task'
 
-print("Checkpoint 0")
+print("Loaded necessary files")
 
 # create landmarker
  
@@ -26,7 +34,8 @@ VisionRunningMode = mp.tasks.vision.RunningMode
  
 options = HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=hand_model_path),
-    running_mode=VisionRunningMode.IMAGE,
+    running_mode=VisionRunningMode.LIVE_STREAM,
+    result_callback=result_callback,
     num_hands=1,
 )
 landmarker = HandLandmarker.create_from_options(options)
@@ -38,7 +47,7 @@ canvas = np.full((CANVAS_SIZE, CANVAS_SIZE), 255, dtype=np.uint8)
 
 THUMB_TIP = 4
 INDEX_TIP = 8
-PINCH_THRESHOLD = 0.06
+PINCH_THRESHOLD = 0.05
 STROKE_TIMEOUT = 1.3
 
 last_pt = None
@@ -48,7 +57,6 @@ print("Created canvas")
 
 # capture from webcam
 cap = cv2.VideoCapture(0)
-print("Checkpoint 1!")
 if not cap.isOpened():
     print("Cannot open camera")
     exit()
@@ -145,14 +153,10 @@ smoothed_pt = None
 # loop
 
 while True:
+
     # read latest frame from camera
     ret, frame = cap.read()
     h, w, c = frame.shape
-
-    x_max = 0
-    y_max = 0
-    x_min = w
-    y_min = h
 
     # frame read correctly?
     if not ret:
@@ -163,11 +167,13 @@ while True:
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
-    result = landmarker.detect(mp_image)
 
-    if result.hand_landmarks:
-        # bounding box logic
-        landmarks = result.hand_landmarks[0]
+    timestamp_ms = int(time.time() * 1000)
+    landmarker.detect_async(mp_image, timestamp_ms)
+
+
+    if latest_result and latest_result.hand_landmarks:
+        landmarks = latest_result.hand_landmarks[0]
         thumb = landmarks[THUMB_TIP]
         index = landmarks[INDEX_TIP]
 
@@ -233,7 +239,7 @@ while True:
             canvas = draw_char_on_canvas(canvas, text, font_path)
             print(f"Predicted character: {decoded_prediction}.") # console
             cv2.imshow("canvas", canvas)
-            cv2.waitKey(5000)
+            cv2.waitKey(3000)
         canvas[:] = 255
         has_stroke = False
         last_pt = None
