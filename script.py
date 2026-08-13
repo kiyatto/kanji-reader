@@ -38,7 +38,7 @@ canvas = np.full((CANVAS_SIZE, CANVAS_SIZE), 255, dtype=np.uint8)
 
 THUMB_TIP = 4
 INDEX_TIP = 8
-PINCH_THRESHOLD = 0.05
+PINCH_THRESHOLD = 0.06
 STROKE_TIMEOUT = 1.3
 
 last_pt = None
@@ -147,6 +147,12 @@ smoothed_pt = None
 while True:
     # read latest frame from camera
     ret, frame = cap.read()
+    h, w, c = frame.shape
+
+    x_max = 0
+    y_max = 0
+    x_min = w
+    y_min = h
 
     # frame read correctly?
     if not ret:
@@ -160,14 +166,31 @@ while True:
     result = landmarker.detect(mp_image)
 
     if result.hand_landmarks:
+        # bounding box logic
         landmarks = result.hand_landmarks[0]
         thumb = landmarks[THUMB_TIP]
         index = landmarks[INDEX_TIP]
 
-        pinch_dist = ((thumb.x - index.x) ** 2 + (thumb.y - index.y) ** 2) ** 0.5
-        print(f"Pinch distance: {pinch_dist}")
-        pen_down = pinch_dist < PINCH_THRESHOLD
+        # webcam frame coordinates for thumb and index
+        thumb_x, thumb_y = int(thumb.x * w), int(thumb.y * h)
+        index_x, index_y = int(index.x * w), int(index.y * h)
 
+        pad = 30
+        x_min = min(thumb_x, index_x) - pad
+        x_max = max(thumb_x, index_x) + pad
+        y_min = min(thumb_y, index_y) - pad
+        y_max = max(thumb_y, index_y) + pad
+
+        # clamp box to frame dimensions
+        x_min, y_min = max(0, x_min), max(0, y_min)
+        x_max, y_max = min(w, x_max), min(h, y_max)
+
+        cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+
+        pinch_dist = ((thumb.x - index.x) ** 2 + (thumb.y - index.y) ** 2) ** 0.5
+        
+        pen_down = pinch_dist < PINCH_THRESHOLD
+        
         px = int(index.x * CANVAS_SIZE)
         py = int(index.y * CANVAS_SIZE)
 
