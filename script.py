@@ -89,6 +89,20 @@ def preprocess_frame(canvas_uint8):
     char_h = max_y - min_y
     
     # 2. calculate & apply dynamic padding (25%)
+    MIN_SIZE = 100 
+    if char_w < MIN_SIZE:
+        center_x = min_x + char_w // 2
+        min_x = max(center_x - MIN_SIZE // 2, 0)
+        max_x = min(center_x + MIN_SIZE // 2, canvas_uint8.shape[1])
+        char_w = max_x - min_x
+        
+    if char_h < MIN_SIZE:
+        center_y = min_y + char_h // 2
+        min_y = max(center_y - MIN_SIZE // 2, 0)
+        max_y = min(center_y + MIN_SIZE // 2, canvas_uint8.shape[0])
+        char_h = max_y - min_y
+
+
     pad = int(max(char_w, char_h) * 0.25)
     x0 = max(min_x - pad, 0)
     x1 = min(max_x + pad, canvas_uint8.shape[1])
@@ -106,7 +120,9 @@ def preprocess_frame(canvas_uint8):
     square[y_off:y_off + h, x_off:x_off + w] = cropped
  
     resized = cv2.resize(square, (64, 64), interpolation=cv2.INTER_AREA)
-    normalized = resized.astype(np.float32) / 255.0
+    # simulate ETL images
+    blurred = cv2.GaussianBlur(resized, (3, 3), 0)
+    normalized = blurred.astype(np.float32) / 255.0
     
     return normalized
 
@@ -119,25 +135,14 @@ def run_model(img):
         pred_idx = torch.argmax(logits, dim=1).item()
     return class_list[pred_idx]
 
+
+
+# apply stabilization for pen strokes
+
+SMOOTHING_FACTOR = 0.3 
+smoothed_pt = None
+
 # loop
-
-# debug stuff
-
-# test_img = cv2.imread("./tester.png")
-
-# sim_stroke = 255 - test_img
-
-# # paste it into a canvas-sized array, centered, same as a real drawn character would sit
-# sim_canvas = np.zeros((CANVAS_SIZE, CANVAS_SIZE), dtype=np.uint8)
-# h, w = sim_stroke.shape
-# y0, x0 = (CANVAS_SIZE - h) // 2, (CANVAS_SIZE - w) // 2
-# sim_canvas[y0:y0 + h, x0:x0 + w] = sim_stroke
-
-# # now push it through your REAL pipeline, exactly as the live loop does
-# processed = preprocess_frame(sim_canvas)
-# cv2.imwrite("debug_roundtrip.png", (processed * 255).astype(np.uint8))
-# prediction = run_model(processed)
-# print(f"Round-trip prediction: {prediction}  (expected: {target_char})")
 
 while True:
     # read latest frame from camera
@@ -167,13 +172,29 @@ while True:
         py = int(index.y * CANVAS_SIZE)
 
         if pen_down:
-            if last_pt is not None:
-                cv2.line(canvas, last_pt, (px, py), (128, 128, 128), thickness=10, lineType=cv2.LINE_AA)
-            last_pt = (px, py)
+            if smoothed_pt is None:
+                # first frame of the stroke: initialize exactly at the finger
+                smoothed_pt = (float(px), float(py))
+                last_pt = (px, py)
+            else:
+                # apply EMA: move the smoothed point a percentage of the way to the raw point
+                sx = SMOOTHING_FACTOR * px + (1 - SMOOTHING_FACTOR) * smoothed_pt[0]
+                sy = SMOOTHING_FACTOR * py + (1 - SMOOTHING_FACTOR) * smoothed_pt[1]
+                smoothed_pt = (sx, sy)
+                
+                # convert to integers for OpenCV drawing
+                current_pt_int = (int(sx), int(sy))
+                
+                if last_pt is not None:
+                    cv2.line(canvas, last_pt, current_pt_int, (150, 150, 150), thickness=10, lineType=cv2.LINE_AA)
+                
+                last_pt = current_pt_int
+                
             last_pen_down_time = time.time()
             has_stroke = True
         else:
             last_pt = None
+            smoothed_pt = None
     else:
         last_pt = None
 
